@@ -1,6 +1,7 @@
 # tpss_live
 
-A new Flutter project.
+A new Flutter project that webscrap the TPSS site for Taekwondo results.
+The application reads at startup the active tournaments from the http://tpss.eu site and then you can select the appropriate tournament and get all the appropriarte results
 
 ## Getting Started
 
