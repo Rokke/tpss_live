@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:path_provider/path_provider.dart';
-import 'package:tpss_live/filtering.dart';
 
 String capitalize(String text) => text.isEmpty?"":"${text[0].toUpperCase()}${text.substring(1)}";
 
@@ -42,11 +40,9 @@ class FilterConfig{
       print('Config file exist! ${file.path}');
       await file.open();
       final config=jsonDecode(await file.readAsString());
-/*      FilterConfig fc=FilterConfig(List<MatchFilter>(), List<MatchFilter>());
-      fc.selectedFilters.addAll((config['selectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)));
-      fc.unselectedFilters.addAll((config['unselectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)));*/
       return FilterConfig((config['selectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)).toList(), (config['unselectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)).toList());
-    }else return null;
+    }else print('No existing filter');
+    return null;
   }
   FilterConfig.fromJson(Map<String, List<MatchFilter>> json) : selectedFilters = json['selectedFilters'], unselectedFilters=json['unselectedFilters'];
   Map<String, dynamic> toJson() {
@@ -69,8 +65,9 @@ enum Gender{
   female
 }
 class MainClass{
-  static const _childrenFemale=['-29','-33','-37'];   //TODO: This is wrong
-  static const _childrenMale=['-33','-37','-41'];     //TODO: This is wrong
+  //TODO: Children and Veteran classes are wrong
+  static const _childrenFemale=['-29','-33','-37'];
+  static const _childrenMale=['-33','-37','-41'];
   static const _cadetFemale=['-29','-33','-37','-41','-44','-47','-51','-55','-59','+59'];
   static const _cadetMale=['-33','-37','-41','-45','-49','-53','-57','-61','-65','+65'];
   static const _juniorFemale=['-42','-44','-46','-49','-52','-55','-59','-63','-68','+68'];

@@ -25,7 +25,7 @@ class LiveTournamentState extends State<LiveTournament> {
   final fights=List<Fight>();
   FilterConfig filterConfig;
   final tournaments=List<Tournament>();
-  String _selectedTournament;
+  Tournament _selectedTournament;
   String _myCookie;
   final loading=ValueNotifier<bool>(false);
   final updater=ValueNotifier(0);
@@ -33,20 +33,24 @@ class LiveTournamentState extends State<LiveTournament> {
   Future<void> _updateActiveTournaments() async{
     loading.value=true;
     final startTime=DateTime.now().millisecondsSinceEpoch;
-    Response response=await get("https://tpss.eu/liveresults.asp?AR=1");
-    print('Downloaded new tournaments: ${response.body.length} bytes in ${DateTime.now().millisecondsSinceEpoch-startTime} ms, ${response.headers}');
-    if(_myCookie==null) _myCookie=response.headers['set-cookie'];
-    var activeTournamentOption=RegExp(r"(?<=cmbToer)[^<]*(.*?)[^>]*<\/SELE", dotAll: true).firstMatch(response.body);
-    print('Active: ${activeTournamentOption[1]}');
-    var activeTournaments=RegExp(r"(?<=OPTION)[^\']*\'(?<key>\d{8})[^>]*>(?<name>[^<]*)[^<\s]*", dotAll: true).allMatches(activeTournamentOption[1]).map((match)=> Tournament(match.namedGroup("name"), match.namedGroup("key"))).where((tour)=>!tour.name.toLowerCase().contains("poomsa"));
-    var newTournaments=activeTournaments.where((selected)=>!tournaments.contains(selected.key));
-    print('New tournaments: $newTournaments');
-    if(newTournaments.isNotEmpty){
-      tournaments.addAll(newTournaments);
-      tournamentVersion.value++;
+    try {
+      Response response=await get("https://tpss.eu/liveresults.asp?AR=1");
+      print('Downloaded new tournaments: ${response.body.length} bytes in ${DateTime.now().millisecondsSinceEpoch-startTime} ms, ${response.headers}');
+      if(_myCookie==null) _myCookie=response.headers['set-cookie'];
+      var activeTournamentOption=RegExp(r"(?<=cmbToer)[^<]*(.*?)[^>]*<\/SELE", dotAll: true).firstMatch(response.body);
+      print('Active: ${activeTournamentOption[1]}');
+      var activeTournaments=RegExp(r"(?<=OPTION)[^\']*\'(?<key>\d{8})[^>]*>(?<name>[^<]*)[^<\s]*", dotAll: true).allMatches(activeTournamentOption[1]).map((match)=> Tournament(match.namedGroup("name"), match.namedGroup("key"))).where((tour)=>!tour.name.toLowerCase().contains("poomsa"));
+      var newTournaments=activeTournaments.where((selected)=>!tournaments.contains(selected.key));
+      print('New tournaments: $newTournaments');
+      if(newTournaments.isNotEmpty){
+        tournaments.addAll(newTournaments);
+        tournamentVersion.value++;
+      }
+      loading.value=false;
+    } catch (err) {
+      print('Error fetching URL: $err');
     }
-    loading.value=false;
-  }
+}
   Future<String> _postInfo(String key) async{
     final startTime=DateTime.now().millisecondsSinceEpoch;
     print('_postInfo($key)');
@@ -59,20 +63,19 @@ class LiveTournamentState extends State<LiveTournament> {
       throw err;
     }
   }
-  void _refreshTournamentInfo(String tournamentKey) async{
-    if(tournamentKey!=_selectedTournament){       // Changed tournament so need to clear the list
-      _selectedTournament=tournamentKey;
-      fights.clear();
-    }
+  void _refreshTournamentInfo(bool changed) async{
+    print('_refreshTournamentInfo($changed)-$_selectedTournament');
     loading.value=true;
-    var resp=await _postInfo(_selectedTournament);
+    var resp=await _postInfo(_selectedTournament.key);
+    if(changed){         // Changed tournament so need to clear the list
+      fights.clear();
+      if(!_selectedTournament.hasReadHTML){
+        _selectedTournament.fromHTML(resp);
+      }else print('Allready fetch TournamentInfo');
+    }
     print('Lengde: ${resp.length} bytes');
     if(resp.indexOf("Table4")>0){
-      resp=resp.substring(resp.indexOf("Table4")).split('\r\n')[1]+"<TR b";
-      RegExp rx=RegExp(r"(?<=TR bg)[^>]*>(.*?)<TR b", multiLine: true, dotAll: true);
-      print("Fights: ${resp.length} bytes");
-      var mat=rx.allMatches(resp).toList().map((f)=> Fight.fromRegex(f[1]));
-      print('Matches: ${mat.length} treff');
+      var mat=Fight.fromHTML(resp);
       if(fights.length<1) fights.addAll(mat);
       else{
         print('Just updating...');
@@ -87,7 +90,6 @@ class LiveTournamentState extends State<LiveTournament> {
   void initState() { 
     super.initState();
     _readFilter();
-    _selectedTournament=widget.tournamentKey;
     _updateActiveTournaments();
     print('initState finished');
   }
@@ -101,109 +103,127 @@ class LiveTournamentState extends State<LiveTournament> {
   String _fetch2CharacterCountryCode(String countrycode){
     switch (countrycode) {
       case 'BLR': return 'BY';
+      case 'BUL': return 'BG';
       default: return countrycode.substring(0,2);
     }
   }
   Widget _fetchFlag(String country){
     return Tooltip(
       message: country,
-      child: Flags.getMiniFlag(_fetch2CharacterCountryCode(country), 15, 21)
+      child: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Flags.getMiniFlag(_fetch2CharacterCountryCode(country), 15, 21),
+      )
     );
   }
   Card _listTileBuilder(Fight fight){
-    final score=fight.score.split('-');
-    return Card(
-      elevation: 2,
-      margin: EdgeInsets.all(3),
-      color: (fight.className[1]=='F')?Colors.red[colorGradient[fight.className[0]]]:Colors.blue[colorGradient[fight.className[0]]],
-      child: Container(
-        padding: EdgeInsets.all(6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: <Widget>[
-            Container(
-              color: Colors.deepPurple,
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text("${fight.roundNo}", style: textListLeadingMain),
-                  Text("${fight.className}", style: textListLeadingSub),
-                  Text("${fight.result}", style: textListLeadingSub)
-                ]
-              ),
-            ),
-            Expanded(
-              child: Container(
-                color: Colors.blue[900],
-                constraints: BoxConstraints(maxHeight: double.infinity),
+    try{
+      final score=fight.score.split('-');
+      return Card(
+        elevation: 2,
+        margin: EdgeInsets.all(3),
+        color: (fight.className[1]=='F')?Colors.red[colorGradient[fight.className[0]]]:Colors.blue[colorGradient[fight.className[0]]],
+        child: Container(
+          padding: EdgeInsets.all(6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              Container(
+                color: Colors.deepPurple,
+                padding: EdgeInsets.symmetric(horizontal: 2),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(alignment: Alignment.center, width: 20, height: 20, color: Colors.white, child: Text(score[0], style: TextStyle(color: Colors.blue[900], fontSize: 15, fontWeight: FontWeight.bold))),
-                        Center(child: Text(fight.chong, style: textListItemMain,))
-                      ]
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _fetchFlag(fight.chongCountry),
-                        Expanded(child: Text(fight.chongClub, overflow: TextOverflow.clip, style: textListItemSub, softWrap: false,))
-                      ]
-                    )
-                  ],
-                )
+                    Text("${fight.roundNo}", style: textListLeadingMain),
+                    Text("${fight.className}", style: textListLeadingSub),
+                    Text("${fight.result}", style: textListLeadingSub)
+                  ]
+                ),
               ),
-            ),
-            Expanded(
-              child: Container(
-                color: Colors.red[900],
-                constraints: BoxConstraints(maxHeight: double.infinity),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Expanded(child: Text(fight.hong, style: textListItemMain,)),
-                        Container(alignment: Alignment.center, width: 20, height: 20, color: Colors.white, child: Text(score[1], style: TextStyle(color: Colors.red[900], fontSize: 15, fontWeight: FontWeight.bold)))
-                      ]
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _fetchFlag(fight.hongCountry),
-                        Expanded(child: Text(fight.hongClub, overflow: TextOverflow.clip, style: textListItemSub, softWrap: false),)
-                      ]
-                    )
-                  ],
-                )
+              Expanded(
+                child: Container(
+                  color: Colors.blue[900],
+                  constraints: BoxConstraints(maxHeight: double.infinity),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(alignment: Alignment.center, margin: EdgeInsets.only(right: 3), width: 20, height: 20, color: Colors.white, child: Text(score[0], style: TextStyle(color: Colors.blue[900], fontSize: 15, fontWeight: FontWeight.bold))),
+                          Center(child: Text(fight.chong, style: textListItemMain,))
+                        ]
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          fight.chongCountry.isNotEmpty?_fetchFlag(fight.chongCountry):Container(height:15),
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(left: 3),
+                            child: Text(fight.chongClub, overflow: TextOverflow.clip, style: textListItemSub, softWrap: false,),
+                          ))
+                        ]
+                      )
+                    ],
+                  )
+                ),
               ),
-            ),
-          ]
+              Expanded(
+                child: Container(
+                  color: Colors.red[900],
+                  constraints: BoxConstraints(maxHeight: double.infinity),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(left: 3),
+                            child: Text(fight.hong, style: textListItemMain,),
+                          )),
+                          Container(alignment: Alignment.center, width: 20, height: 20, color: Colors.white, child: Text(score[1], style: TextStyle(color: Colors.red[900], fontSize: 15, fontWeight: FontWeight.bold)))
+                        ]
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(left: 3),
+                            child: Text(fight.hongClub, overflow: TextOverflow.clip, style: textListItemSub, softWrap: false),
+                          ),),
+                          fight.hongCountry.isNotEmpty?_fetchFlag(fight.hongCountry):Container(height:15),
+                        ]
+                      )
+                    ],
+                  )
+                ),
+              ),
+            ]
+          )
         )
-      )
-    );
+      );
+    }catch(ex){
+      print('Error creating tile: $ex => $fight');
+    }
+    return null;
   }
   List<Widget> _actionWidgets(){
     return [
       CircularProgressIndicator(),
       ValueListenableBuilder(
-          valueListenable: loading,
-          builder: (BuildContext context, dynamic value, _) {
-            return Row(
-              children: [
-                IconButton(icon: Icon(value?Icons.arrow_downward:Icons.refresh), onPressed: value?null:(){_refreshTournamentInfo(_selectedTournament);}),
-                value? Container():IconButton(icon: Icon(Icons.filter_list), onPressed: value?null:(){Navigator.push(context, MaterialPageRoute(builder: (context)=>FilterMatches()));})
-              ]
-            );
-          },
-       ),
+        valueListenable: loading,
+        builder: (BuildContext context, dynamic value, _) {
+          return Row(
+            children: [
+              IconButton(icon: Icon(value?Icons.arrow_downward:Icons.refresh), onPressed: value?null:(){_refreshTournamentInfo(false);}),
+              value? Container():IconButton(icon: Icon(Icons.filter_list), onPressed: value?null:(){Navigator.push(context, MaterialPageRoute(builder: (context)=>FilterMatches()));})
+            ]
+          );
+        },
+      ),
       PopupMenuButton(
         onSelected: null,
         itemBuilder: (BuildContext context){
@@ -213,15 +233,19 @@ class LiveTournamentState extends State<LiveTournament> {
     ];
   }
   Widget _fetchTournamentDropDown(){
-    return DropdownButton<String>(
+    return DropdownButton<Tournament>(
       isExpanded: true,
-      items: tournaments.map((t)=>DropdownMenuItem<String>(value: t.key, child: Text(" ${t.name}", overflow: TextOverflow.clip, softWrap: false,))).toList(),
+      items: tournaments.map((t)=>DropdownMenuItem<Tournament>(value: t, child: Text(" ${t.name}", overflow: TextOverflow.clip, softWrap: false,))).toList(),
       value: _selectedTournament,
-      onChanged: (selectedTournament)=>_refreshTournamentInfo(selectedTournament));
+      onChanged: (selected){
+        _selectedTournament=selected;
+        _refreshTournamentInfo(true);
+      }
+    );
   }
   @override
   Widget build(BuildContext context) {
-    print('build');
+    print('LiveTournament-build()');
     return Scaffold(
       appBar: AppBar(title: Text('TPSS Live'),actions: _actionWidgets(),),
       body: Container(
