@@ -67,7 +67,7 @@ class _FilterMatchesState extends State<FilterMatches> {
   }
   _showWeightMenu(BuildContext context, bool favorites) async{
     Size _size=MediaQuery.of(context).size;
-    print('Show popup($favorites), $_size');
+    print('[${DateTime.now().millisecondsSinceEpoch}] Show popup($favorites), $_size');
     List<PopupMenuItem<MainClass>> mainCategory=List<PopupMenuItem<MainClass>>();
     MainClassType.values.forEach((element) {
       Gender.values.map((genderType)=>MainClass(genderType, element, "")).forEach(
@@ -100,29 +100,29 @@ class _FilterMatchesState extends State<FilterMatches> {
           listUnselected.add(MatchFilter(cls.toValue, MatchType.className));
           _ignoreVersion.value++;
         }
-        print('Selected $cls');
+        print('[${DateTime.now().millisecondsSinceEpoch}] Selected $cls');
       }
     }
   }
   _openFilter() async {
     final config=await FilterConfig.loadConfig();
     if(config!=null){
-      print('Config loaded: $config');
+      print('[${DateTime.now().millisecondsSinceEpoch}] Config loaded: $config');
       listSelected.clear();
       listSelected.addAll(config.selectedFilters);
       listUnselected.clear();
       listUnselected.addAll(config.unselectedFilters);
       _favoriteVersion.value++;
       _ignoreVersion.value++;
-    }else print('No default filter exist');
+    }else print('[${DateTime.now().millisecondsSinceEpoch}] No default filter exist');
   }
   Future<void> _saveFilter() async {
     FilterConfig config=FilterConfig(listSelected, listUnselected);
-    print('CONFIG: ${jsonEncode(config)}');
+    print('[${DateTime.now().millisecondsSinceEpoch}] CONFIG: ${jsonEncode(config)}');
     final file=File((await getApplicationDocumentsDirectory()).path + "/filter.json");
     await file.create();
     await file.writeAsString(jsonEncode(config));
-    print('File saved: ${file.path}');
+    print('[${DateTime.now().millisecondsSinceEpoch}] File saved: ${file.path}');
   }
   @override
   Widget build(BuildContext context) {

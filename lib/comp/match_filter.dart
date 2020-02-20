@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:tpss_live/comp/fights.dart';
 
 String capitalize(String text) => text.isEmpty?"":"${text[0].toUpperCase()}${text.substring(1)}";
 
@@ -21,7 +22,7 @@ class MatchFilter{
     return '$value ($matchTypeName)';
   }
   Map<String, dynamic> toJson() {
-    print('toJson()');
+    print('[${DateTime.now().millisecondsSinceEpoch}] toJson()');
     return {
       'value': value,
       'matchType': matchType.toString()
@@ -34,23 +35,69 @@ class FilterConfig{
   final List<MatchFilter> unselectedFilters;
   FilterConfig(this.selectedFilters, this.unselectedFilters);
   static Future<FilterConfig> loadConfig({String filename="filter.json"}) async {
-    print('loadConfig()');
+    print('[${DateTime.now().millisecondsSinceEpoch}] loadConfig()');
     final file=File((await getApplicationDocumentsDirectory()).path + "/$filename");
     if(await file.exists()){
-      print('Config file exist! ${file.path}');
+      print('[${DateTime.now().millisecondsSinceEpoch}] Config file exist! ${file.path}');
       await file.open();
       final config=jsonDecode(await file.readAsString());
       return FilterConfig((config['selectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)).toList(), (config['unselectedFilters'] as List<dynamic>).map((x)=>MatchFilter.fromJson(x)).toList());
-    }else print('No existing filter');
+    }else print('[${DateTime.now().millisecondsSinceEpoch}] No existing filter');
     return null;
   }
   FilterConfig.fromJson(Map<String, List<MatchFilter>> json) : selectedFilters = json['selectedFilters'], unselectedFilters=json['unselectedFilters'];
   Map<String, dynamic> toJson() {
-    print('FilterConfig - toJson()');
+    print('[${DateTime.now().millisecondsSinceEpoch}] FilterConfig - toJson()');
     return {
       'selectedFilters': selectedFilters,
       'unselectedFilters': unselectedFilters
     };
+  }
+  FightMatch updateFight(Fight fight){
+    bool chong=false, hong=false, all=false;
+    try{
+      selectedFilters.forEach((element) {
+        switch(element.matchType){
+          case MatchType.className:{
+            if(!all && element.value == fight.className) all=true;
+            break;
+          }
+          case MatchType.country:{
+            if(!chong && element.value == fight.chongCountry) chong=true;
+            if(!hong && element.value == fight.hongCountry) hong=true;
+            break;
+          }
+          case MatchType.name:{
+            if(!chong && RegExp(element.value).firstMatch(fight.chong)!=null) chong=true;
+            if(!hong && RegExp(element.value).firstMatch(fight.hong)!=null) hong=true;
+            break;
+          }
+        }
+      });
+      if(all) return FightMatch.FAVORITE;
+      else if(chong){
+        if(hong) return FightMatch.FAV_CHONG_HONG;
+        else return FightMatch.FAV_CHONG;
+      }else if(hong) return FightMatch.FAV_HONG;
+      if(unselectedFilters.any((element) {
+        switch(element.matchType){
+          case MatchType.className:{
+            return fight.className == element.value;
+          }
+          case MatchType.country:{
+            return (element.value == fight.chongCountry || element.value == fight.hongCountry);
+          }
+          case MatchType.name:{
+            return (RegExp(element.value).firstMatch(fight.chong)!=null || RegExp(element.value).firstMatch(fight.hong)!=null);
+          }
+        }
+        return false;
+      })) return FightMatch.HIDE;
+      else return FightMatch.UNKNOWN;
+    }catch(ex){
+      print('[${DateTime.now().millisecondsSinceEpoch}] updateFight: $ex');
+      throw ex;
+    }
   }
 }
 enum MainClassType{
@@ -104,7 +151,7 @@ class MainClass{
       case MainClassType.senior: return 'S';
       case MainClassType.veteran: return 'V';
     }
-    print('Error, shouldn\'t happen: $mainClass');
+    print('[${DateTime.now().millisecondsSinceEpoch}] Error, shouldn\'t happen: $mainClass');
     return '?';
   }
   static List<MainClass> get maleChildrens=>_childrenMale.map((cls)=>MainClass(Gender.male, MainClassType.children, cls)).toList();
